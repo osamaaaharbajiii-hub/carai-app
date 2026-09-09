@@ -11,10 +11,9 @@ class ObdService {
 
   ObdService(this.device);
 
-  // 1. خوارزمية طلب الأذونات وتهيئة الاتصال
+  // 1. تهيئة الاتصال والأذونات
   Future<bool> initialize() async {
     try {
-      // طلب أذونات البلوتوث والموقع وقت التشغيل لتفادي خطأ PlatformException
       Map<Permission, PermissionStatus> permissions = await [
         Permission.bluetoothScan,
         Permission.bluetoothConnect,
@@ -22,14 +21,11 @@ class ObdService {
       ].request();
 
       if (permissions[Permission.bluetoothConnect] != PermissionStatus.granted) {
-        print("Bluetooth permissions not granted.");
         return false;
       }
 
-      // الاتصال بالجهاز
       await device.connect(autoConnect: false);
 
-      // اكتشاف الخدمات والخصائص (Services & Characteristics)
       List<BluetoothService> services = await device.discoverServices();
       for (var service in services) {
         for (var char in service.characteristics) {
@@ -42,23 +38,63 @@ class ObdService {
         }
       }
 
-      // تفعيل الاستماع للردود (Notify)
       if (_notifyCharacteristic != null) {
         await _notifyCharacteristic!.setNotifyValue(true);
       }
 
-      // تهيئة قطعة ELM327 بإرسال أوامر AT الأساسية
-      await sendCommand('AT Z');  // Reset
-      await sendCommand('AT SP 0'); // Auto Detect Protocol
-      
-      return true;
+      return await setupAdapter();
     } catch (e) {
       print("Error initializing OBD connection: $e");
       return false;
     }
   }
 
-  // 2. خوارزمية إرسال الأوامر للسيارة واستقبال الرد
+  // 2. دالة تهيئة المحول (setupAdapter)
+  Future<bool> setupAdapter() async {
+    try {
+      await sendCommand('AT Z');   // Reset ELM327
+      await sendCommand('AT E0');  // Echo Off
+      await sendCommand('AT L0');  // Linefeeds Off
+      await sendCommand('AT SP 0'); // Auto Protocol Detect
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // 3. دالة قراءة أعطال السيارة (readDtcCodes)
+  Future<List<String>> readDtcCodes() async {
+    try {
+      // 03 هو أمر OBD-II القياسي لقراءة أكواد الأعطال (DTCs)
+      String response = await sendCommand('03');
+      
+      if (response.contains('NO DATA') || response.contains('ERROR')) {
+        return [];
+      }
+
+      List<String> codes = [];
+      // تحليل استجابة الأعطال وتنظيف السلاسل النصية
+      List<String> lines = response.split('\r');
+      for (var line in lines) {
+        String cleanLine = line.replaceAll(' ', '').trim();
+        if (cleanLine.startsWith('43')) {
+          // استخراج الأكواد من السلسلة الهكس
+          String hexData = cleanLine.substring(2);
+          for (int i = 0; i < hexData.length - 3; i += 4) {
+            String codeHex = hexData.substring(i, i + 4);
+            if (codeHex != '0000') {
+              codes.add('P$codeHex');
+            }
+          }
+        }
+      }
+      return codes.isEmpty ? ['P0000 (No DTCs Found)'] : codes;
+    } catch (e) {
+      return ['Error reading DTCs: $e'];
+    }
+  }
+
+  // 4. خوارزمية إرسال الأوامر للسيارة
   Future<String> sendCommand(String command) async {
     if (_writeCharacteristic == null || _notifyCharacteristic == null) {
       return "Error: Characteristics not configured";
@@ -67,23 +103,19 @@ class ObdService {
     Completer<String> completer = Completer<String>();
     StringBuffer responseBuffer = StringBuffer();
 
-    // الاستماع للبيانات القادمة من قطعة OBD
     _notifySubscription = _notifyCharacteristic!.lastValueStream.listen((data) {
       String responseChunk = utf8.decode(data, allowMalformed: true);
       responseBuffer.write(responseChunk);
 
-      // تنتهي استجابة ELM327 دائماً بظهور رمز '>'
       if (responseBuffer.toString().contains('>')) {
         _notifySubscription?.cancel();
         completer.complete(responseBuffer.toString().replaceAll('>', '').trim());
       }
     });
 
-    // إرسال الأمر مع إضافة سطر جديد \r (ضروري لقطعة ELM327)
     List<int> bytes = utf8.encode("$command\r");
     await _writeCharacteristic!.write(bytes, withoutResponse: false);
 
-    // مهلة زمنية 5 ثوانٍ للرد
     return completer.future.timeout(
       const Duration(seconds: 5),
       onTimeout: () {
@@ -93,7 +125,11 @@ class ObdService {
     );
   }
 
-  // 3. إنهاء الاتصال
+  // 5. دالة التخلص من الموارد وإنهاء الاتصال (dispose)
+  void dispose() {
+    disconnect();
+  }
+
   Future<void> disconnect() async {
     await _notifySubscription?.cancel();
     await device.disconnect();
