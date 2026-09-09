@@ -1,0 +1,45 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.x'
+
+      - name: Recreate Flutter Project Structure
+        run: |
+          mkdir temp_app
+          cd temp_app
+          flutter create --org com.carai .
+          cp -r ../lib/* ./lib/
+          cp ../pubspec.yaml ./pubspec.yaml
+          flutter pub get
+
+      - name: Build APK
+        run: |
+          cd temp_app
+          flutter build apk --release --no-tree-shake-icons
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: temp_app/build/app/outputs/flutter-apk/app-release.apk
+          
