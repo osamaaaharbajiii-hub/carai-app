@@ -17,8 +17,8 @@ class UltraCarAIApp extends StatelessWidget {
       title: 'CarAI Super Diagnostic',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF090D16), // أسود فاخر
-        primaryColor: const Color(0xFFFFB703), // ذهبي
+        scaffoldBackgroundColor: const Color(0xFF090D16),
+        primaryColor: const Color(0xFFFFB703),
         cardColor: const Color(0xFF131B2E),
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFF090D16),
@@ -95,9 +95,8 @@ class _MainDashboardState extends State<MainDashboard> {
         ],
       ),
       
-      // Floating Action Button - AI Assistant Robot Icon in Corner
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: const Color(0xFF8B5CF6), // لون أرجواني ذكي
+        backgroundColor: const Color(0xFF8B5CF6),
         icon: const Icon(Icons.smart_toy_outlined, color: Colors.white, size: 26),
         label: const Text("Ask AI", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         onPressed: () => _showAiChatSheet(context),
@@ -108,18 +107,16 @@ class _MainDashboardState extends State<MainDashboard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Status Header
             _buildStatusHeader(),
             const SizedBox(height: 24),
 
-            // Grid Section Header
             const Text(
               "ALL-IN-ONE DIAGNOSTICS",
               style: TextStyle(color: Color(0xFFFFB703), letterSpacing: 1.5, fontWeight: FontWeight.bold, fontSize: 13),
             ),
             const SizedBox(height: 16),
 
-            // Main Features Grid
+            // Grid Items Including ICE (Gasoline/Diesel) + EV + Hybrid
             GridView.count(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -127,21 +124,20 @@ class _MainDashboardState extends State<MainDashboard> {
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
               children: [
-                _buildGridItem(Icons.qr_code_scanner, "Full Scan", Colors.amber, () {}),
-                _buildGridItem(Icons.speed, "Live Data", Colors.amber, () {}),
+                _buildGridItem(Icons.qr_code_scanner, "Full Scan", Colors.amber, () => _showICEFeature(context, "فحص الشامل لكافة الكومبيوترات (Engine, ABS, Airbag)")),
+                _buildGridItem(Icons.speed, "Live Data", Colors.amber, () => _showICEFeature(context, "قراءة الحساسات المباشرة (RPM, Temp, O2, MAF)")),
+                _buildGridItem(Icons.local_gas_station, "Engine (ICE)", Colors.orange, () => _showICEFeature(context, "فحص محركات البنزين والديزل والانبعاثات")),
                 _buildGridItem(Icons.battery_charging_full, "Hybrid Health", Colors.greenAccent, () {}),
                 _buildGridItem(Icons.electric_car, "Tesla CAN", Colors.cyanAccent, () {}),
-                _buildGridItem(Icons.oil_barrel, "Oil Reset", Colors.amber, () {}),
+                _buildGridItem(Icons.oil_barrel, "Oil & Service", Colors.amber, () => _showICEFeature(context, "تصفير مؤشر الزيت والصيانة (Oil Reset)")),
                 _buildGridItem(Icons.tune, "1-Click Mod", Colors.orangeAccent, () => _showModsSheet(context)),
                 _buildGridItem(Icons.vpn_key, "Key Coding", Colors.amber, () {}),
                 _buildGridItem(Icons.psychology, "AI Repair", Colors.purpleAccent, () => _showAiChatSheet(context)),
-                _buildGridItem(Icons.more_horiz, "More", Colors.grey, () {}),
               ],
             ),
 
             const SizedBox(height: 30),
 
-            // Modifications Section
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -158,7 +154,7 @@ class _MainDashboardState extends State<MainDashboard> {
             const SizedBox(height: 12),
 
             _buildModCard("64-Color Ambient Lighting", "تفعيل الإضاءة المحيطية الداخلية", Icons.lightbulb_outline),
-            _buildModCard("Daytime Running Lights (DRL)", "التحكم بأضوء النهار من الشاشة", Icons.wb_sunny_outlined),
+            _buildModCard("Daytime Running Lights (DRL)", "التحكم بأضواء النهار من الشاشة", Icons.wb_sunny_outlined),
             _buildModCard("Seatbelt Warning Disable", "إلغاء صوت تنبيه حزام الأمان", Icons.notifications_off_outlined),
           ],
         ),
@@ -166,7 +162,6 @@ class _MainDashboardState extends State<MainDashboard> {
     );
   }
 
-  // Header Status
   Widget _buildStatusHeader() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -204,7 +199,6 @@ class _MainDashboardState extends State<MainDashboard> {
     );
   }
 
-  // Grid Tile
   Widget _buildGridItem(IconData icon, String label, Color iconColor, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
@@ -227,7 +221,6 @@ class _MainDashboardState extends State<MainDashboard> {
     );
   }
 
-  // Mod Visual Card
   Widget _buildModCard(String title, String subtitle, IconData icon) {
     return Card(
       color: const Color(0xFF131B2E),
@@ -254,11 +247,43 @@ class _MainDashboardState extends State<MainDashboard> {
     );
   }
 
-  // AI Chat Popup Sheet
+  void _showICEFeature(BuildContext context, String detail) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF131B2E),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.local_gas_station, color: Color(0xFFFFB703), size: 40),
+              const SizedBox(height: 12),
+              const Text("فحص محركات الاحتراق الداخلي", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text(detail, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFFB703),
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text("بدء الفحص الآن", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              )
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _showAiChatSheet(BuildContext context) {
     TextEditingController controller = TextEditingController();
     List<String> messages = [
-      "أهلاً بك! أنا مساعد CarAI الذكي. كيف يمكنني مساعدتك في تشخيص السيارة أو شرح كود عطل؟"
+      "أهلاً بك! أنا مساعد CarAI الذكي. كيف يمكنني مساعدتك في تشخيص أعطال المحرك، البنزين/الديزل، الهايبرد أو تسلا؟"
     ];
 
     showModalBottomSheet(
@@ -348,7 +373,6 @@ class _MainDashboardState extends State<MainDashboard> {
     );
   }
 
-  // Mods Sheet
   void _showModsSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -381,7 +405,6 @@ class _MainDashboardState extends State<MainDashboard> {
     );
   }
 
-  // Device Picker Sheet
   void _showDevicePicker(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -420,3 +443,4 @@ class _MainDashboardState extends State<MainDashboard> {
     );
   }
 }
+
