@@ -26,7 +26,7 @@ jobs:
           channel: 'stable'
 
       - name: Generate Android project structure
-        run: flutter create --platforms=android .
+        run: flutter create --project-name=carai_app --platforms=android .
 
       - name: Patch Android build.gradle for compatibility
         run: |
