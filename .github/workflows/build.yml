@@ -1,8 +1,8 @@
-name: Build Android APK
+ name: Build Android APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
@@ -15,36 +15,24 @@ jobs:
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: 'temurin'
           java-version: '17'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.x'
+          flutter-version: '3.19.6'
+          channel: 'stable'
 
-      - name: Recreate Flutter Project Structure
-        run: |
-          mkdir temp_app
-          cd temp_app
-          flutter create --org com.carai --platforms android .
-          
-          # Inject Internet Permission & Update to Latest Android SDK (34)
-          sed -i '/<manifest/a \    <uses-permission android:name="android.permission.INTERNET"/>' android/app/src/main/AndroidManifest.xml
-          sed -i 's/targetSdkVersion .*/targetSdkVersion 34/' android/app/build.gradle
-          sed -i 's/compileSdkVersion .*/compileSdkVersion 34/' android/app/build.gradle
-          
-          cp -r ../lib/* ./lib/
-          cp ../pubspec.yaml ./pubspec.yaml
-          flutter pub get
+      - name: Install Dependencies
+        run: flutter pub get
 
       - name: Build APK
-        run: |
-          cd temp_app
-          flutter build apk --release --no-tree-shake-icons
+        run: flutter build apk --release
 
-      - name: Upload APK Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: temp_app/build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+    
