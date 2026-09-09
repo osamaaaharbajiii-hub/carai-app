@@ -116,7 +116,6 @@ class _MainDashboardState extends State<MainDashboard> {
             ),
             const SizedBox(height: 16),
 
-            // Grid Items Including ICE (Gasoline/Diesel) + EV + Hybrid
             GridView.count(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -443,4 +442,3 @@ class _MainDashboardState extends State<MainDashboard> {
     );
   }
 }
-
