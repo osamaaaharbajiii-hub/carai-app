@@ -17,11 +17,14 @@ class UltraCarAIApp extends StatelessWidget {
       title: 'CarAI Super Diagnostic',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
-        primaryColor: Colors.blueAccent,
-        scaffoldBackgroundColor: const Color(0xFF0F172A),
+        scaffoldBackgroundColor: const Color(0xFF090D16), // أسود فاخر
+        primaryColor: const Color(0xFFFFB703), // ذهبي
+        cardColor: const Color(0xFF131B2E),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF1E293B),
+          backgroundColor: Color(0xFF090D16),
           elevation: 0,
+          centerTitle: true,
+          titleTextStyle: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
         ),
       ),
       home: const MainDashboard(),
@@ -41,22 +44,7 @@ class _MainDashboardState extends State<MainDashboard> {
   bool isConnected = false;
   List<BluetoothDevice> devicesList = [];
   BluetoothDevice? selectedDevice;
-
-  String statusMessage = "انتظار الاتصال...";
-  String rawBuffer = "";
-
-  // Dynamic Live Readings
-  String engineRpm = "--";
-  String vehicleSpeed = "--";
-  String dtcCodes = "لا يوجد فحص";
-  
-  // Hybrid Battery Live Data
-  String hybridSoh = "--";
-  String cellImbalance = "--";
-  
-  // Tesla CAN Live Data
-  String teslaPackTemp = "--";
-  String teslaMaxVoltage = "--";
+  String statusMessage = "جاهز للاتصال";
 
   @override
   void initState() {
@@ -67,49 +55,22 @@ class _MainDashboardState extends State<MainDashboard> {
   Future<void> _getBluetoothDevices() async {
     try {
       List<BluetoothDevice> devices = await FlutterBluetoothSerial.instance.getBondedDevices();
-      setState(() {
-        devicesList = devices;
-      });
+      setState(() => devicesList = devices);
     } catch (e) {
-      setState(() {
-        statusMessage = "خطأ في البحث عن الأجهزة: $e";
-      });
+      debugPrint("Error: $e");
     }
   }
 
   Future<void> _connectToOBD(BluetoothDevice device) async {
-    setState(() {
-      statusMessage = "جاري الاتصال بـ ${device.name}...";
-    });
-
+    setState(() => statusMessage = "جاري الاتصال بـ ${device.name}...");
     try {
       BluetoothConnection conn = await BluetoothConnection.toAddress(device.address);
       setState(() {
         connection = conn;
         isConnected = true;
         selectedDevice = device;
-        statusMessage = "تم الاتصال بنجاح بـ ${device.name}";
+        statusMessage = "متصل بـ ${device.name}";
       });
-
-      // Listen to incoming OBD data stream
-      connection!.input!.listen((Uint8List data) {
-        String response = utf8.decode(data);
-        rawBuffer += response;
-        if (rawBuffer.contains('>')) {
-          _parseObdResponse(rawBuffer);
-          rawBuffer = "";
-        }
-      }).onDone(() {
-        setState(() {
-          isConnected = false;
-          statusMessage = "تم قطع الاتصال بالسيارة";
-        });
-      });
-
-      // Initialize ELM327
-      _sendObdCommand("AT Z");
-      _sendObdCommand("AT SP 0");
-
     } catch (e) {
       setState(() {
         isConnected = false;
@@ -118,239 +79,344 @@ class _MainDashboardState extends State<MainDashboard> {
     }
   }
 
-  void _sendObdCommand(String command) {
-    if (connection != null && connection!.isConnected) {
-      connection!.output.add(Uint8List.fromList(utf8.encode("$command\r")));
-    } else {
-      setState(() {
-        statusMessage = "تنبيه: غير متصل بأداة OBD!";
-      });
-    }
-  }
-
-  void _parseObdResponse(String response) {
-    String cleanStr = response.replaceAll(RegExp(r'[\r\n\s>]'), '');
-
-    setState(() {
-      // Parse Engine RPM (PID: 010C)
-      if (cleanStr.contains("410C")) {
-        int idx = cleanStr.indexOf("410C");
-        if (cleanStr.length >= idx + 8) {
-          String hexA = cleanStr.substring(idx + 4, idx + 6);
-          String hexB = cleanStr.substring(idx + 6, idx + 8);
-          int a = int.parse(hexA, radix: 16);
-          int b = int.parse(hexB, radix: 16);
-          double rpm = ((a * 256) + b) / 4.0;
-          engineRpm = "${rpm.toInt()} RPM";
-        }
-      }
-
-      // Parse Vehicle Speed (PID: 010D)
-      if (cleanStr.contains("410D")) {
-        int idx = cleanStr.indexOf("410D");
-        if (cleanStr.length >= idx + 6) {
-          String hexA = cleanStr.substring(idx + 4, idx + 6);
-          int speed = int.parse(hexA, radix: 16);
-          vehicleSpeed = "$speed km/h";
-        }
-      }
-
-      // Parse DTC Fault Codes (Mode 03)
-      if (cleanStr.contains("43")) {
-        dtcCodes = cleanStr.replaceAll("43", "Codes: ");
-      }
-
-      // Custom Hybrid Query (PID Ex: 2101)
-      if (cleanStr.contains("6101")) {
-        hybridSoh = "94.2%";
-        cellImbalance = "0.008 V";
-      }
-
-      // Custom Tesla Query (CAN Ex: 2201)
-      if (cleanStr.contains("6201")) {
-        teslaPackTemp = "31.5 °C";
-        teslaMaxVoltage = "4.15 V";
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 7,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text("CarAI Super App"),
-          bottom: const TabBar(
-            isScrollable: true,
-            tabs: [
-              Tab(icon: Icon(Icons.speed), text: "اللوحة الرئيسية"),
-              Tab(icon: Icon(Icons.memory), text: "تشخيص OBD-II"),
-              Tab(icon: Icon(Icons.battery_full), text: "فحص الهايبرد Hybrid"),
-              Tab(icon: Icon(Icons.electric_car), text: "تشخيص التسلا Tesla"),
-              Tab(icon: Icon(Icons.terminal), text: "البرمجة والتكوين"),
-              Tab(icon: Icon(Icons.vpn_key), text: "برمجة المفاتيح"),
-              Tab(icon: Icon(Icons.smart_toy), text: "المساعد الذكي AI"),
-            ],
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("CarAI PREMIUM"),
+        actions: [
+          IconButton(
+            icon: Icon(
+              isConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
+              color: isConnected ? Colors.greenAccent : Colors.redAccent,
+            ),
+            onPressed: () => _showDevicePicker(context),
           ),
-        ),
-        body: TabBarView(
+        ],
+      ),
+      
+      // Floating Action Button - AI Assistant Robot Icon in Corner
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: const Color(0xFF8B5CF6), // لون أرجواني ذكي
+        icon: const Icon(Icons.smart_toy_outlined, color: Colors.white, size: 26),
+        label: const Text("Ask AI", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        onPressed: () => _showAiChatSheet(context),
+      ),
+
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildOverviewTab(),
-            _buildObdTab(),
-            _buildHybridTab(),
-            _buildTeslaTab(),
-            _buildCodingTab(),
-            _buildKeyTab(),
-            _buildAiTab(),
+            // Status Header
+            _buildStatusHeader(),
+            const SizedBox(height: 24),
+
+            // Grid Section Header
+            const Text(
+              "ALL-IN-ONE DIAGNOSTICS",
+              style: TextStyle(color: Color(0xFFFFB703), letterSpacing: 1.5, fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+
+            // Main Features Grid
+            GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 3,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              children: [
+                _buildGridItem(Icons.qr_code_scanner, "Full Scan", Colors.amber, () {}),
+                _buildGridItem(Icons.speed, "Live Data", Colors.amber, () {}),
+                _buildGridItem(Icons.battery_charging_full, "Hybrid Health", Colors.greenAccent, () {}),
+                _buildGridItem(Icons.electric_car, "Tesla CAN", Colors.cyanAccent, () {}),
+                _buildGridItem(Icons.oil_barrel, "Oil Reset", Colors.amber, () {}),
+                _buildGridItem(Icons.tune, "1-Click Mod", Colors.orangeAccent, () => _showModsSheet(context)),
+                _buildGridItem(Icons.vpn_key, "Key Coding", Colors.amber, () {}),
+                _buildGridItem(Icons.psychology, "AI Repair", Colors.purpleAccent, () => _showAiChatSheet(context)),
+                _buildGridItem(Icons.more_horiz, "More", Colors.grey, () {}),
+              ],
+            ),
+
+            const SizedBox(height: 30),
+
+            // Modifications Section
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "ONE-CLICK MODIFICATIONS",
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                TextButton(
+                  onPressed: () => _showModsSheet(context),
+                  child: const Text("عرض الكل", style: TextStyle(color: Color(0xFFFFB703))),
+                )
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            _buildModCard("64-Color Ambient Lighting", "تفعيل الإضاءة المحيطية الداخلية", Icons.lightbulb_outline),
+            _buildModCard("Daytime Running Lights (DRL)", "التحكم بأضوء النهار من الشاشة", Icons.wb_sunny_outlined),
+            _buildModCard("Seatbelt Warning Disable", "إلغاء صوت تنبيه حزام الأمان", Icons.notifications_off_outlined),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildOverviewTab() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  // Header Status
+  Widget _buildStatusHeader() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF131B2E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFFB703).withOpacity(0.3), width: 1),
+      ),
+      child: Row(
         children: [
-          Card(
-            color: const Color(0xFF1E293B),
-            child: ListTile(
-              title: Text(isConnected ? "متصل: ${selectedDevice?.name}" : "غير متصل بأي أداة"),
-              subtitle: Text(statusMessage),
-              trailing: Icon(
-                isConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
-                color: isConnected ? Colors.green : Colors.red,
-              ),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFB703).withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.minor_crash, color: Color(0xFFFFB703), size: 28),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  selectedDevice != null ? selectedDevice!.name ?? "OBD Adapter" : "غير متصل",
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 4),
+                Text(statusMessage, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+              ],
             ),
           ),
-          const SizedBox(height: 10),
-          const Text("الأجهزة المقترنة:", style: TextStyle(fontWeight: FontWeight.bold)),
-          Expanded(
-            child: ListView.builder(
-              itemCount: devicesList.length,
-              itemBuilder: (context, index) {
-                final dev = devicesList[index];
-                return ListTile(
-                  title: Text(dev.name ?? "جهاز غير معروف"),
-                  subtitle: Text(dev.address),
-                  trailing: const Icon(Icons.link),
-                  onTap: () => _connectToOBD(dev),
-                );
-              },
-            ),
+        ],
+      ),
+    );
+  }
+
+  // Grid Tile
+  Widget _buildGridItem(IconData icon, String label, Color iconColor, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF131B2E),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.05)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: iconColor, size: 30),
+            const SizedBox(height: 8),
+            Text(label, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Mod Visual Card
+  Widget _buildModCard(String title, String subtitle, IconData icon) {
+    return Card(
+      color: const Color(0xFF131B2E),
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(12),
           ),
-        ],
+          child: Icon(icon, color: const Color(0xFFFFB703)),
+        ),
+        title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+        subtitle: Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        trailing: const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 14),
+        onTap: () => _showModsSheet(context),
       ),
     );
   }
 
-  Widget _buildObdTab() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          _buildInfoTile("دوران المحرك (RPM)", engineRpm, Colors.cyan),
-          _buildInfoTile("سرعة السيارة", vehicleSpeed, Colors.cyan),
-          _buildInfoTile("أكواد الأعطال (DTCs)", dtcCodes, Colors.orange),
-          const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              ElevatedButton(
-                onPressed: () {
-                  _sendObdCommand("010C");
-                  _sendObdCommand("010D");
-                },
-                child: const Text("تحديث البيانات الحية"),
+  // AI Chat Popup Sheet
+  void _showAiChatSheet(BuildContext context) {
+    TextEditingController controller = TextEditingController();
+    List<String> messages = [
+      "أهلاً بك! أنا مساعد CarAI الذكي. كيف يمكنني مساعدتك في تشخيص السيارة أو شرح كود عطل؟"
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF131B2E),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+                top: 20, left: 16, right: 16,
               ),
-              ElevatedButton(
-                onPressed: () => _sendObdCommand("03"),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-                child: const Text("قراءة الأعطال"),
-              ),
-            ],
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHybridTab() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          _buildInfoTile("صحة البطارية الحية (SOH)", hybridSoh, Colors.green),
-          _buildInfoTile("فرق الجهد المباشر", cellImbalance, Colors.amber),
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: () => _sendObdCommand("2101"),
-            child: const Text("قراءة بيانات الهايبرد من الكمبيوتر"),
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTeslaTab() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          _buildInfoTile("حرارة البطارية الحالية", teslaPackTemp, Colors.orange),
-          _buildInfoTile("أعلى جهد خلية مستلم", teslaMaxVoltage, Colors.green),
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: () => _sendObdCommand("2201"),
-            child: const Text("فحص CAN Bus للتسلا"),
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCodingTab() {
-    return const Center(child: Text("وحدة البرمجة والتكوين (تتطلب الاتصال بالسيارة أولاً)"));
-  }
-
-  Widget _buildKeyTab() {
-    return const Center(child: Text("وحدة برمجة المفاتيح وقراءة PIN Code"));
-  }
-
-  Widget _buildAiTab() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: SingleChildScrollView(
-                child: Text(
-                  "المساعد الذكي AI جاهز:\nالحالة الحالية: $statusMessage\nRPM: $engineRpm\nSpeed: $vehicleSpeed\nأعطال: $dtcCodes",
+              child: SizedBox(
+                height: 450,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: const [
+                        Icon(Icons.smart_toy_outlined, color: Color(0xFF8B5CF6), size: 28),
+                        SizedBox(width: 10),
+                        Text("مساعد CarAI الذكي", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const Divider(color: Colors.white10, height: 24),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: messages.length,
+                        itemBuilder: (context, index) {
+                          bool isUser = index % 2 != 0;
+                          return Align(
+                            alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(vertical: 6),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: isUser ? const Color(0xFF8B5CF6) : const Color(0xFF1E293B),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(messages[index], style: const TextStyle(color: Colors.white)),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: controller,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: InputDecoration(
+                              hintText: "اسأل عن أي كود أو عطل...",
+                              hintStyle: const TextStyle(color: Colors.grey),
+                              filled: true,
+                              fillColor: const Color(0xFF1E293B),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: const Icon(Icons.send, color: Color(0xFF8B5CF6)),
+                          onPressed: () {
+                            if (controller.text.isNotEmpty) {
+                              setModalState(() {
+                                messages.add(controller.text);
+                                messages.add("جاري تحليل السؤال لحجم العطل الخاص بـ (${controller.text})...");
+                                controller.clear();
+                              });
+                            }
+                          },
+                        )
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                 ),
               ),
-            ),
-          ),
-        ],
-      ),
+            );
+          },
+        );
+      },
     );
   }
 
-  Widget _buildInfoTile(String title, String value, Color color) {
-    return Card(
-      color: const Color(0xFF1E293B),
-      child: ListTile(
-        title: Text(title),
-        trailing: Text(value, style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.bold)),
-      ),
+  // Mods Sheet
+  void _showModsSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF131B2E),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("تعديل أضواء النهار (DRL)", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              const Text("تفعيل خيارات التحكم بالأضواء المباشرة من الشاشة.", style: TextStyle(color: Colors.grey, fontSize: 13)),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFFB703),
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text("تفعيل التعديل (Aktivieren)", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Device Picker Sheet
+  void _showDevicePicker(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF131B2E),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text("اختر أداة OBD للبلوتوث", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: devicesList.length,
+                  itemBuilder: (context, index) {
+                    final dev = devicesList[index];
+                    return ListTile(
+                      title: Text(dev.name ?? "Unknown Device", style: const TextStyle(color: Colors.white)),
+                      subtitle: Text(dev.address, style: const TextStyle(color: Colors.grey)),
+                      trailing: const Icon(Icons.bluetooth, color: Color(0xFFFFB703)),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _connectToOBD(dev);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
