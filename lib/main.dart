@@ -114,7 +114,6 @@ class _MainDashboardState extends State<MainDashboard> {
 
   Future<void> _getDevices() async {
     try {
-      // 1. Check if Bluetooth is supported and enabled
       if (await FlutterBluePlus.isSupported == false) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -134,7 +133,6 @@ class _MainDashboardState extends State<MainDashboard> {
         return;
       }
 
-      // 2. Start scanning
       await FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
 
       if (mounted) {
@@ -284,7 +282,7 @@ class _MainDashboardState extends State<MainDashboard> {
                               style: const TextStyle(color: Colors.grey, fontSize: 11),
                             ),
                             onTap: () {
-                              Navigator.pop(context); // Close modal before attempting connection
+                              Navigator.pop(context);
                               _connectToDevice(r.device);
                             },
                           ),
@@ -538,10 +536,15 @@ class _MainDashboardState extends State<MainDashboard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Connection Status Card
             Card(
               color: const Color(0xFF161920),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(15),
                 side: BorderSide(
-                  color: isConnected ? Colors.green.withOpacity(
+                  color: isConnected
+                      ? Colors.green.withOpacity(0.3)
+                      : Colors.white.withOpacity(0.05),
+                ),
+              ),
+              child: InkWell(
+                
