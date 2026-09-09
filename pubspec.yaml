@@ -1,5 +1,5 @@
-name: carai_app
-description: "CarAI Diagnostic Application"
+name: carai
+description: "CarAI - Comprehensive OBD2 Scanner and AI Diagnostics"
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -10,7 +10,8 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^1.2.0
-  cupertino_icons: ^1.0.6
+  flutter_bluetooth_serial: ^0.4.0
+  permission_handler: ^11.3.0
 
 dev_dependencies:
   flutter_test:
