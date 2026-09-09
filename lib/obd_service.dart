@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class ObdService {
   final BluetoothDevice device;
@@ -10,9 +11,25 @@ class ObdService {
 
   ObdService(this.device);
 
-  // تهيئة الخدمة واكتشاف خصائص التوصيل
+  // 1. خوارزمية طلب الأذونات وتهيئة الاتصال
   Future<bool> initialize() async {
     try {
+      // طلب أذونات البلوتوث والموقع وقت التشغيل لتفادي خطأ PlatformException
+      Map<Permission, PermissionStatus> permissions = await [
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        Permission.location,
+      ].request();
+
+      if (permissions[Permission.bluetoothConnect] != PermissionStatus.granted) {
+        print("Bluetooth permissions not granted.");
+        return false;
+      }
+
+      // الاتصال بالجهاز
+      await device.connect(autoConnect: false);
+
+      // اكتشاف الخدمات والخصائص (Services & Characteristics)
       List<BluetoothService> services = await device.discoverServices();
       for (var service in services) {
         for (var char in service.characteristics) {
@@ -25,69 +42,60 @@ class ObdService {
         }
       }
 
-      if (_writeCharacteristic != null && _notifyCharacteristic != null) {
+      // تفعيل الاستماع للردود (Notify)
+      if (_notifyCharacteristic != null) {
         await _notifyCharacteristic!.setNotifyValue(true);
-        return true;
       }
-      return false;
+
+      // تهيئة قطعة ELM327 بإرسال أوامر AT الأساسية
+      await sendCommand('AT Z');  // Reset
+      await sendCommand('AT SP 0'); // Auto Detect Protocol
+      
+      return true;
     } catch (e) {
+      print("Error initializing OBD connection: $e");
       return false;
     }
   }
 
-  // إرسال أمر OBD (مثل 010C للـ RPM أو 03 للأعطال)
+  // 2. خوارزمية إرسال الأوامر للسيارة واستقبال الرد
   Future<String> sendCommand(String command) async {
     if (_writeCharacteristic == null || _notifyCharacteristic == null) {
-      return 'Error: Not connected';
+      return "Error: Characteristics not configured";
     }
 
     Completer<String> completer = Completer<String>();
     StringBuffer responseBuffer = StringBuffer();
 
-    _notifySubscription?.cancel();
-    _notifySubscription = _notifyCharacteristic!.lastValueStream.listen((value) {
-      String data = utf8.decode(value, allowMalformed: true);
-      responseBuffer.write(data);
-      if (data.contains('>')) { // علامة انتهاء الاستجابة في محولات ELM327
-        if (!completer.isCompleted) {
-          completer.complete(responseBuffer.toString().replaceAll('>', '').trim());
-        }
+    // الاستماع للبيانات القادمة من قطعة OBD
+    _notifySubscription = _notifyCharacteristic!.lastValueStream.listen((data) {
+      String responseChunk = utf8.decode(data, allowMalformed: true);
+      responseBuffer.write(responseChunk);
+
+      // تنتهي استجابة ELM327 دائماً بظهور رمز '>'
+      if (responseBuffer.toString().contains('>')) {
+        _notifySubscription?.cancel();
+        completer.complete(responseBuffer.toString().replaceAll('>', '').trim());
       }
     });
 
-    // إرسال الأمر مع إلحاق Carriage Return (\r)
-    List<int> bytes = utf8.encode('$command\r');
-    await _writeCharacteristic!.write(bytes, withoutResponse: _writeCharacteristic!.properties.writeWithoutResponse);
+    // إرسال الأمر مع إضافة سطر جديد \r (ضروري لقطعة ELM327)
+    List<int> bytes = utf8.encode("$command\r");
+    await _writeCharacteristic!.write(bytes, withoutResponse: false);
 
+    // مهلة زمنية 5 ثوانٍ للرد
     return completer.future.timeout(
-      const Duration(seconds: 4),
-      onTimeout: () => 'Timeout: No response from ECU',
+      const Duration(seconds: 5),
+      onTimeout: () {
+        _notifySubscription?.cancel();
+        return "Error: Command Timeout";
+      },
     );
   }
 
-  // تهيئة قطعة الـ OBD2 بأوامر AT الأساسية
-  Future<void> setupAdapter() async {
-    await sendCommand('AT Z');  // Reset
-    await sendCommand('AT E0'); // Echo Off
-    await sendCommand('AT SP 0'); // Auto Protocol Detection
-  }
-
-  // قراءة أكواد الأعطال المخزنة (DTC)
-  Future<List<String>> readDtcCodes() async {
-    String rawData = await sendCommand('03');
-    if (rawData.contains('NO SCAN') || rawData.contains('43 00')) {
-      return [];
-    }
-    // تحليل بسيط للاستجابة المرجعة
-    return [rawData];
-  }
-
-  // مسح لمبة المحرك والأعطال
-  Future<String> clearDtcCodes() async {
-    return await sendCommand('04');
-  }
-
-  void dispose() {
-    _notifySubscription?.cancel();
+  // 3. إنهاء الاتصال
+  Future<void> disconnect() async {
+    await _notifySubscription?.cancel();
+    await device.disconnect();
   }
 }
