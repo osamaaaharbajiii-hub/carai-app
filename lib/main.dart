@@ -540,7 +540,7 @@ class _MainDashboardState extends State<MainDashboard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Card(
-              coloor: const Color(0xFF161920),
+              color: const Color(0xFF161920),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(15),
                 side: BorderSide(
