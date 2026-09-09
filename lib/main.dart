@@ -58,8 +58,16 @@ class _MainDashboardState extends State<MainDashboard> with SingleTickerProvider
   // Selected Module for Deep Diagnostics
   String selectedModule = "25 - Immobilizer System";
   String currentLongCoding = "00000312002400000000";
-  String codingExplanation = "";
-  bool isProcessingCoding = false;
+
+  // AI Chat Assistant State
+  final TextEditingController _chatController = TextEditingController();
+  final List<Map<String, String>> _chatMessages = [
+    {
+      "sender": "ai",
+      "text": "مرحباً بك! أنا مساعد CarAI الذكي. يمكنك سؤالي عن طريقة تكويد المفاتيح، فك شفرات الأعطال (DTC)، أو شرح خطوات التكويد الطويل (Long Coding) لأي سيارة."
+    }
+  ];
+  bool isAiThinking = false;
 
   final List<String> carModules = [
     "25 - Immobilizer System (IMMO / Key Module)",
@@ -76,7 +84,7 @@ class _MainDashboardState extends State<MainDashboard> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _getBondedDevices();
   }
 
@@ -98,7 +106,7 @@ class _MainDashboardState extends State<MainDashboard> with SingleTickerProvider
         selectedDevice = device;
       });
       _sendOBDCommand("AT Z");
-      _sendOBDCommand("AT SP 6"); // CAN 11bit 500k
+      _sendOBDCommand("AT SP 6");
     } catch (e) {
       _showSnackBar("فشل الاتصال بقطعة OBD2: $e");
     }
@@ -149,9 +157,51 @@ class _MainDashboardState extends State<MainDashboard> with SingleTickerProvider
         setState(() => immoStatus = data['response'] ?? "تم تنفيذ عملية المفاتيح بنجاح.");
       }
     } catch (e) {
-      // Handled via local simulation mode
+      // Handled locally
     } finally {
       setState(() => isKeyProgrammingBusy = false);
+    }
+  }
+
+  // AI Assistant Chat Handler
+  Future<void> _sendChatMessage() async {
+    final text = _chatController.text.trim();
+    if (text.isEmpty) return;
+
+    setState(() {
+      _chatMessages.add({"sender": "user", "text": text});
+      _chatController.clear();
+      isAiThinking = true;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse(backendUrl),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "prompt": "أنت خبير فحص وتكويد سيارات وبرمجة مفاتيح (Car Diagnostic & Key Programming Expert). أجب عن السؤال التالي باللغة العربية بأسلوب فني دقيق وبسيط:\n$text"
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _chatMessages.add({"sender": "ai", "text": data['response'] ?? "عذراً، لم أستطع تحليل الطلب حالياً."});
+        });
+      } else {
+        setState(() {
+          _chatMessages.add({"sender": "ai", "text": "حدث خطأ أثناء الاتصال بالخادم الرئيسي."});
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _chatMessages.add({
+          "sender": "ai",
+          "text": "تعذر الاتصال بالسيرفر. تأكد من وجود اتصال بالإنترنت."
+        });
+      });
+    } finally {
+      setState(() => isAiThinking = false);
     }
   }
 
@@ -163,7 +213,7 @@ class _MainDashboardState extends State<MainDashboard> with SingleTickerProvider
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('CarAI Pro: Key & VCDS Studio'),
+        title: const Text('CarAI Pro: Diagnostic & Key Studio'),
         backgroundColor: const Color(0xFF0D47A1),
         actions: [
           IconButton(
@@ -178,8 +228,9 @@ class _MainDashboardState extends State<MainDashboard> with SingleTickerProvider
           controller: _tabController,
           isScrollable: true,
           tabs: const [
+            Tab(icon: Icon(Icons.psychology), text: "مساعد AI"),
             Tab(icon: Icon(Icons.vpn_key), text: "برمجة المفاتيح"),
-            Tab(icon: Icon(Icons.memory), text: "التكويد الطويل (Long Coding)"),
+            Tab(icon: Icon(Icons.memory), text: "التكويد الطويل"),
             Tab(icon: Icon(Icons.build_circle), text: "اختبار المشغلات"),
             Tab(icon: Icon(Icons.speed), text: "اللوحة الحية"),
           ],
@@ -188,6 +239,7 @@ class _MainDashboardState extends State<MainDashboard> with SingleTickerProvider
       body: TabBarView(
         controller: _tabController,
         children: [
+          _buildAiAssistantTab(),
           _buildKeyProgrammingTab(),
           _buildLongCodingTab(),
           _buildActuatorTestsTab(),
@@ -197,7 +249,95 @@ class _MainDashboardState extends State<MainDashboard> with SingleTickerProvider
     );
   }
 
-  // TAB 1: Immobilizer & Key Transponder Programming
+  // TAB 1: AI Assistant Chat Studio
+  Widget _buildAiAssistantTab() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          color: Colors.blue.shade900.withOpacity(0.4),
+          child: const Row(
+            children: [
+              Icon(Icons.smart_toy, color: Colors.cyanAccent, size: 28),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  "مساعد السيارات الذكي (AI Assistant)\nاطرح أي سؤال عن الأعطال، التكويد، أو برمجة المفاتيح.",
+                  style: TextStyle(fontSize: 12, height: 1.3),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: _chatMessages.length,
+            itemBuilder: (context, index) {
+              final msg = _chatMessages[index];
+              final isUser = msg["sender"] == "user";
+              return Align(
+                alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isUser ? Colors.blue.shade800 : Colors.grey.shade900,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isUser ? Colors.blueAccent : Colors.cyan.shade700,
+                      width: 1,
+                    ),
+                  ),
+                  constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.8),
+                  child: Text(
+                    msg["text"] ?? "",
+                    style: const TextStyle(fontSize: 14, height: 1.4),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        if (isAiThinking)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                SizedBox(width: 10),
+                Text("الذكاء الاصطناعي يفكر...", style: TextStyle(color: Colors.grey, fontSize: 12)),
+              ],
+            ),
+          ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          color: Colors.black26,
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _chatController,
+                  decoration: const InputDecoration(
+                    hintText: "اسأل الذكاء الاصطناعي (مثال: كيف أكوّد مفتاح جولف 6؟)...",
+                    border: InputBorder.none,
+                  ),
+                  onSubmitted: (_) => _sendChatMessage(),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.send, color: Colors.cyanAccent),
+                onPressed: _sendChatMessage,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // TAB 2: Immobilizer & Key Programming
   Widget _buildKeyProgrammingTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
@@ -213,8 +353,6 @@ class _MainDashboardState extends State<MainDashboard> with SingleTickerProvider
             ),
           ),
           const SizedBox(height: 16),
-
-          // Status & PIN Box
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -242,8 +380,6 @@ class _MainDashboardState extends State<MainDashboard> with SingleTickerProvider
             ),
           ),
           const SizedBox(height: 16),
-
-          // Key Action Buttons
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade700, padding: const EdgeInsets.all(14)),
             icon: const Icon(Icons.key, color: Colors.white),
@@ -251,7 +387,6 @@ class _MainDashboardState extends State<MainDashboard> with SingleTickerProvider
             onPressed: () => _processKeyProgrammingAI("READ_PIN"),
           ),
           const SizedBox(height: 10),
-
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700, padding: const EdgeInsets.all(14)),
             icon: const Icon(Icons.add_moderator, color: Colors.white),
@@ -259,7 +394,6 @@ class _MainDashboardState extends State<MainDashboard> with SingleTickerProvider
             onPressed: () => _processKeyProgrammingAI("PROGRAM_KEY"),
           ),
           const SizedBox(height: 10),
-
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade800, padding: const EdgeInsets.all(14)),
             icon: const Icon(Icons.phonelink_erase, color: Colors.white),
@@ -267,8 +401,6 @@ class _MainDashboardState extends State<MainDashboard> with SingleTickerProvider
             onPressed: () => _processKeyProgrammingAI("ERASE_KEYS"),
           ),
           const SizedBox(height: 20),
-
-          // AI Output Guide
           Card(
             color: Colors.blueGrey.shade900,
             child: Padding(
@@ -291,7 +423,7 @@ class _MainDashboardState extends State<MainDashboard> with SingleTickerProvider
     );
   }
 
-  // TAB 2: VCDS Killer - Interactive Long Coding Engine
+  // TAB 3: Long Coding Engine
   Widget _buildLongCodingTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
@@ -335,7 +467,7 @@ class _MainDashboardState extends State<MainDashboard> with SingleTickerProvider
     );
   }
 
-  // TAB 3: Actuator Output Tests
+  // TAB 4: Actuator Output Tests
   Widget _buildActuatorTestsTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
@@ -367,7 +499,7 @@ class _MainDashboardState extends State<MainDashboard> with SingleTickerProvider
     );
   }
 
-  // TAB 4: Live Gauges
+  // TAB 5: Live Gauges
   Widget _buildLiveGaugesTab() {
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -413,22 +545,4 @@ class _MainDashboardState extends State<MainDashboard> with SingleTickerProvider
           child: devicesList.isEmpty
               ? const Text('لا توجد أجهزة مقترنة.')
               : ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: devicesList.length,
-                  itemBuilder: (context, index) {
-                    final device = devicesList[index];
-                    return ListTile(
-                      title: Text(device.name ?? "Device"),
-                      subtitle: Text(device.address),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _connectToOBD(device);
-                      },
-                    );
-                  },
-                ),
-        ),
-      ),
-    );
-  }
-}
+                  shrinkWrap: t
