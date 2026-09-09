@@ -99,7 +99,7 @@ class _MainDashboardState extends State<MainDashboard> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 7, vsync: this); // 7 Tabs now
+    _tabController = TabController(length: 7, vsync: this);
     _getBondedDevices();
   }
 
