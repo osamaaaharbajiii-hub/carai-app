@@ -27,7 +27,13 @@ jobs:
         run: |
           mkdir temp_app
           cd temp_app
-          flutter create --org com.carai .
+          flutter create --org com.carai --platforms android .
+          
+          # Inject Internet Permission & Update to Latest Android SDK (34)
+          sed -i '/<manifest/a \    <uses-permission android:name="android.permission.INTERNET"/>' android/app/src/main/AndroidManifest.xml
+          sed -i 's/targetSdkVersion .*/targetSdkVersion 34/' android/app/build.gradle
+          sed -i 's/compileSdkVersion .*/compileSdkVersion 34/' android/app/build.gradle
+          
           cp -r ../lib/* ./lib/
           cp ../pubspec.yaml ./pubspec.yaml
           flutter pub get
@@ -42,4 +48,3 @@ jobs:
         with:
           name: app-release
           path: temp_app/build/app/outputs/flutter-apk/app-release.apk
-          
